@@ -1,5 +1,5 @@
 <?php
-// rt/kelola_pengaduan.php (Versi FINAL dengan Pembuatan Notifikasi)
+// rt/kelola_pengaduan.php (Versi All-in-One FINAL & LENGKAP)
 
 // BAGIAN 1: LOGIKA PHP
 session_start();
@@ -30,10 +30,8 @@ function cekKepemilikan($conn, $id_pengaduan, $id_rt) {
 // === BLOK PEMROSESAN SEMUA AKSI DENGAN VALIDASI KEPEMILIKAN ===
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     $id_pengaduan = (int)$_POST['id_pengaduan'];
-    // Validasi kepemilikan sebelum melakukan aksi apapun
     if (cekKepemilikan($conn, $id_pengaduan, $id_rt_session)) {
         
-        // Ambil ID pelapor untuk dikirimi notifikasi
         $result_pelapor = $conn->query("SELECT id_user_pelapor FROM pengaduan WHERE id_pengaduan = $id_pengaduan");
         $id_pelapor = $result_pelapor->fetch_assoc()['id_user_pelapor'];
 
@@ -44,49 +42,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
                 $stmt->bind_param("si", $status_baru, $id_pengaduan);
                 if ($stmt->execute()) {
                     $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Status berhasil diubah.'];
-                    // BARU: Kirim notifikasi ke pelapor
-                    $pesan_notif = "Status laporan Anda #" . $id_pengaduan . " telah diubah menjadi '" . $status_baru . "'.";
+                    $pesan_notif = "Status laporan Anda #" . $id_pengaduan . " telah diubah oleh Petugas RT menjadi '" . $status_baru . "'.";
                     $stmt_notif = $conn->prepare("INSERT INTO notifikasi (id_user_penerima, id_pengaduan, pesan) VALUES (?, ?, ?)");
                     $stmt_notif->bind_param("iis", $id_pelapor, $id_pengaduan, $pesan_notif);
-                    $stmt_notif->execute();
-                    $stmt_notif->close();
-                } else {
-                    $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Gagal mengubah status.'];
-                }
+                    $stmt_notif->execute(); $stmt_notif->close();
+                } else { $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Gagal mengubah status.']; }
                 $stmt->close();
                 break;
-
             case 'tambah_tindak_lanjut':
                 $keterangan = $conn->real_escape_string($_POST['keterangan']);
                 $foto_hasil_path = null;
-                // ... (Logika upload file) ...
+                if (isset($_FILES['foto_hasil']) && $_FILES['foto_hasil']['error'] == 0) {
+                    $target_dir = __DIR__ . "/../uploads/hasil/";
+                    if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
+                    if (is_writable($target_dir)) {
+                        $file_name = time() . '_' . basename($_FILES["foto_hasil"]["name"]);
+                        $target_file = $target_dir . $file_name;
+                        if (move_uploaded_file($_FILES["foto_hasil"]["tmp_name"], $target_file)) {
+                            $foto_hasil_path = "uploads/hasil/" . $file_name;
+                        }
+                    }
+                }
                 $stmt = $conn->prepare("INSERT INTO tindak_lanjut (id_pengaduan, id_user_petugas, keterangan, foto_hasil) VALUES (?, ?, ?, ?)");
                 $stmt->bind_param("iiss", $id_pengaduan, $id_user_session, $keterangan, $foto_hasil_path);
                 if($stmt->execute()) {
                     $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Tindak lanjut berhasil ditambahkan.'];
-                    // BARU: Kirim notifikasi ke pelapor
-                    $pesan_notif = "Petugas telah menambahkan progres baru pada laporan Anda #" . $id_pengaduan . ".";
+                    $pesan_notif = "Petugas RT telah menambahkan progres baru pada laporan Anda #" . $id_pengaduan . ".";
                     $stmt_notif = $conn->prepare("INSERT INTO notifikasi (id_user_penerima, id_pengaduan, pesan) VALUES (?, ?, ?)");
                     $stmt_notif->bind_param("iis", $id_pelapor, $id_pengaduan, $pesan_notif);
-                    $stmt_notif->execute();
-                    $stmt_notif->close();
-                } else {
-                    $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Gagal menambahkan tindak lanjut.'];
-                }
+                    $stmt_notif->execute(); $stmt_notif->close();
+                } else { $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Gagal menambahkan tindak lanjut.']; }
                 $stmt->close();
                 break;
-
             case 'tambah_komentar':
                 $isi_komentar = $conn->real_escape_string($_POST['isi_komentar']);
                 $stmt = $conn->prepare("INSERT INTO komentar_pengaduan (id_pengaduan, id_user_pengirim, isi_komentar) VALUES (?, ?, ?)");
                 $stmt->bind_param("iis", $id_pengaduan, $id_user_session, $isi_komentar);
                 if ($stmt->execute()) {
-                    // BARU: Kirim notifikasi ke pelapor bahwa petugas membalas
-                    $pesan_notif = "Petugas memberikan komentar pada laporan Anda #" . $id_pengaduan . ".";
+                    $pesan_notif = "Petugas RT memberikan komentar pada laporan Anda #" . $id_pengaduan . ".";
                     $stmt_notif = $conn->prepare("INSERT INTO notifikasi (id_user_penerima, id_pengaduan, pesan) VALUES (?, ?, ?)");
                     $stmt_notif->bind_param("iis", $id_pelapor, $id_pengaduan, $pesan_notif);
-                    $stmt_notif->execute();
-                    $stmt_notif->close();
+                    $stmt_notif->execute(); $stmt_notif->close();
                 }
                 $stmt->close();
                 break;
@@ -228,14 +224,12 @@ if ($flash_message) unset($_SESSION['flash_message']);
                             class="fas fa-chart-bar me-2"></i>Laporan Wilayah</a></li>
             </ul>
         </nav>
-
         <div id="content">
             <nav class="topbar">
                 <button type="button" id="sidebarCollapse" class="btn"><i class="fas fa-bars"></i></button>
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
-                            data-bs-toggle="dropdown" aria-expanded="false"><i
+                    <li class="nav-item dropdown"><a class="nav-link dropdown-toggle" href="#" id="navbarDropdown"
+                            role="button" data-bs-toggle="dropdown" aria-expanded="false"><i
                                 class="fas fa-user me-2"></i><?php echo htmlspecialchars($_SESSION['nama_lengkap']); ?></a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                             <li><a class="dropdown-item" href="../auth/logout.php">Logout</a></li>
@@ -247,38 +241,39 @@ if ($flash_message) unset($_SESSION['flash_message']);
                 <?php
             $action = $_GET['action'] ?? 'list';
             if ($action == 'detail' && isset($_GET['id'])) {
-                // TAMPILKAN HALAMAN DETAIL PENGADUAN
+                // ---- TAMPILKAN HALAMAN DETAIL PENGADUAN ----
                 $id_pengaduan = (int)$_GET['id'];
-                $stmt_detail = $conn->prepare("SELECT p.*, u.nama_lengkap as nama_pelapor, u.nomor_telepon, k.nama_kategori, rt.nomor_rt, rw.nomor_rw FROM pengaduan p JOIN users u ON p.id_user_pelapor = u.id_user JOIN kategori_pengaduan k ON p.id_kategori = k.id_kategori JOIN rt ON p.id_rt_lokasi = rt.id_rt JOIN rw ON rt.id_rw = rw.id_rw WHERE p.id_pengaduan = ? AND p.tujuan_id_rt = ?");
-                $stmt_detail->bind_param("ii", $id_pengaduan, $id_rt_session);
-                $stmt_detail->execute();
-                $detail_pengaduan = $stmt_detail->get_result()->fetch_assoc();
-                $stmt_detail->close();
+                if (cekKepemilikan($conn, $id_pengaduan, $id_rt_session)) {
+                    $stmt_detail = $conn->prepare("SELECT p.*, u.nama_lengkap as nama_pelapor, u.nomor_telepon, k.nama_kategori, rt.nomor_rt, rw.nomor_rw FROM pengaduan p LEFT JOIN users u ON p.id_user_pelapor = u.id_user LEFT JOIN kategori_pengaduan k ON p.id_kategori = k.id_kategori JOIN rt ON p.id_rt_lokasi = rt.id_rt JOIN rw ON rt.id_rw = rw.id_rw WHERE p.id_pengaduan = ?");
+                    $stmt_detail->bind_param("i", $id_pengaduan);
+                    $stmt_detail->execute();
+                    $detail_pengaduan = $stmt_detail->get_result()->fetch_assoc();
+                    $stmt_detail->close();
 
-                if (!$detail_pengaduan) {
-                    echo "<div class='alert alert-danger'>Pengaduan tidak ditemukan atau bukan untuk wilayah RT Anda.</div>";
-                } else {
-                    $bukti_list = $conn->query("SELECT * FROM bukti_pendukung WHERE id_pengaduan = $id_pengaduan");
-                    $tindak_lanjut_list = $conn->query("SELECT tl.*, u.nama_lengkap as nama_petugas FROM tindak_lanjut tl JOIN users u ON tl.id_user_petugas = u.id_user WHERE tl.id_pengaduan = $id_pengaduan ORDER BY tl.tanggal_aksi DESC");
-                    $komentar_list = $conn->query("SELECT k.*, u.nama_lengkap as nama_pengirim, r.nama_role FROM komentar_pengaduan k JOIN users u ON k.id_user_pengirim = u.id_user JOIN roles r ON u.id_role = r.id_role WHERE k.id_pengaduan = $id_pengaduan ORDER BY k.tanggal_kirim ASC");
+                    if ($detail_pengaduan) {
+                        $bukti_list = $conn->query("SELECT * FROM bukti_pendukung WHERE id_pengaduan = $id_pengaduan");
+                        $tindak_lanjut_list = $conn->query("SELECT tl.*, u.nama_lengkap as nama_petugas FROM tindak_lanjut tl JOIN users u ON tl.id_user_petugas = u.id_user WHERE tl.id_pengaduan = $id_pengaduan ORDER BY tl.tanggal_aksi DESC");
+                        $komentar_list = $conn->query("SELECT k.*, u.nama_lengkap as nama_pengirim, r.nama_role FROM komentar_pengaduan k JOIN users u ON k.id_user_pengirim = u.id_user JOIN roles r ON u.id_role = r.id_role WHERE k.id_pengaduan = $id_pengaduan ORDER BY k.tanggal_kirim ASC");
             ?>
                 <a href="kelola_pengaduan.php" class="btn btn-secondary mb-3"><i
                         class="fas fa-arrow-left me-2"></i>Kembali ke Daftar</a>
                 <div class="row">
                     <div class="col-lg-8">
                         <div class="card shadow mb-4">
-                            <div class="card-header">
+                            <div class="card-header py-3 d-flex justify-content-between align-items-center">
                                 <h6 class="m-0 font-weight-bold" style="color: var(--primary-color);">Detail Laporan
                                     #<?php echo $detail_pengaduan['id_pengaduan']; ?></h6>
+                                <?php $status = $detail_pengaduan['status']; $badge_class = 'bg-secondary'; if ($status == 'Diterima') $badge_class = 'bg-primary'; if ($status == 'Diproses') $badge_class = 'bg-warning text-dark'; if ($status == 'Selesai') $badge_class = 'bg-success'; if ($status == 'Ditolak') $badge_class = 'bg-danger'; ?>
+                                <span class="badge <?php echo $badge_class; ?> fs-6"><?php echo $status; ?></span>
                             </div>
                             <div class="card-body">
                                 <p><strong>Pelapor:</strong>
-                                    <?php echo htmlspecialchars($detail_pengaduan['nama_pelapor']); ?> (Telp:
-                                    <?php echo htmlspecialchars($detail_pengaduan['nomor_telepon']); ?>)</p>
+                                    <?php echo htmlspecialchars($detail_pengaduan['nama_pelapor'] ?? 'N/A'); ?> (Telp:
+                                    <?php echo htmlspecialchars($detail_pengaduan['nomor_telepon'] ?? 'N/A'); ?>)</p>
                                 <p><strong>Tanggal Lapor:</strong>
                                     <?php echo date('d F Y', strtotime($detail_pengaduan['tanggal_lapor'])); ?></p>
                                 <p><strong>Kategori:</strong>
-                                    <?php echo htmlspecialchars($detail_pengaduan['nama_kategori']); ?></p>
+                                    <?php echo htmlspecialchars($detail_pengaduan['nama_kategori'] ?? 'N/A'); ?></p>
                                 <p><strong>Lokasi:</strong>
                                     <?php echo htmlspecialchars($detail_pengaduan['lokasi_lengkap']); ?> (RT
                                     <?php echo $detail_pengaduan['nomor_rt']; ?>/RW
@@ -305,7 +300,7 @@ if ($flash_message) unset($_SESSION['flash_message']);
                             <div class="card-body" style="max-height: 400px; overflow-y: auto;">
                                 <?php if($komentar_list->num_rows > 0): while($k = $komentar_list->fetch_assoc()): ?>
                                 <div
-                                    class="mb-2 p-2 rounded <?php echo ($k['id_user_pengirim'] == $detail_pengaduan['id_user_pelapor'] ? 'bg-light' : 'bg-info bg-opacity-25'); ?>">
+                                    class="mb-2 p-2 rounded <?php echo ($k['id_user_pengirim'] == $detail_pengaduan['id_user_pelapor'] ? 'bg-light' : 'bg-info bg-opacity-10'); ?>">
                                     <strong><?php echo htmlspecialchars($k['nama_pengirim']); ?></strong> <span
                                         class="badge bg-secondary"><?php echo $k['nama_role']; ?></span>
                                     <p class="mb-0 mt-1"><?php echo nl2br(htmlspecialchars($k['isi_komentar'])); ?></p>
@@ -315,8 +310,7 @@ if ($flash_message) unset($_SESSION['flash_message']);
                                 <?php endwhile; else: echo '<p class="text-muted">Belum ada komentar.</p>'; endif; ?>
                             </div>
                             <div class="card-footer">
-                                <form action="kelola_pengaduan.php?action=detail&id=<?php echo $id_pengaduan; ?>"
-                                    method="POST">
+                                <form action="kelola_pengaduan.php" method="POST">
                                     <input type="hidden" name="action" value="tambah_komentar"><input type="hidden"
                                         name="id_pengaduan" value="<?php echo $id_pengaduan; ?>">
                                     <div class="input-group"><textarea name="isi_komentar" class="form-control"
@@ -378,8 +372,9 @@ if ($flash_message) unset($_SESSION['flash_message']);
                                 <div class="mb-2 p-2 rounded bg-light border">
                                     <p class="mb-1"><?php echo nl2br(htmlspecialchars($tl['keterangan'])); ?></p>
                                     <?php if($tl['foto_hasil']): ?><a href="../<?php echo $tl['foto_hasil']; ?>"
-                                        target="_blank">Lihat Foto Hasil</a><?php endif; ?>
-                                    <small class="text-muted d-block">Oleh:
+                                        target="_blank" class="btn btn-sm btn-outline-info mt-1"><i
+                                            class="fas fa-camera"></i> Lihat Foto Hasil</a><?php endif; ?>
+                                    <small class="text-muted d-block mt-2">Oleh:
                                         <?php echo htmlspecialchars($tl['nama_petugas']); ?> -
                                         <?php echo date('d M Y, H:i', strtotime($tl['tanggal_aksi'])); ?></small>
                                 </div>
@@ -389,10 +384,13 @@ if ($flash_message) unset($_SESSION['flash_message']);
                     </div>
                 </div>
                 <?php
+                    }
+                } else {
+                    echo "<div class='alert alert-danger'>Pengaduan tidak ditemukan atau bukan untuk wilayah RT Anda.</div>";
                 }
             } else {
-                // TAMPILKAN DAFTAR PENGADUAN UNTUK RT INI
-                $stmt_list = $conn->prepare("SELECT p.id_pengaduan, p.tanggal_lapor, p.status, u.nama_lengkap as nama_pelapor, k.nama_kategori FROM pengaduan p JOIN users u ON p.id_user_pelapor = u.id_user JOIN kategori_pengaduan k ON p.id_kategori = k.id_kategori WHERE p.tujuan_id_rt = ? ORDER BY p.id_pengaduan DESC");
+                // TAMPILAN DAFTAR PENGADUAN UNTUK RT INI
+                $stmt_list = $conn->prepare("SELECT p.id_pengaduan, p.tanggal_lapor, p.status, u.nama_lengkap as nama_pelapor, k.nama_kategori FROM pengaduan p LEFT JOIN users u ON p.id_user_pelapor = u.id_user LEFT JOIN kategori_pengaduan k ON p.id_kategori = k.id_kategori WHERE p.tujuan_id_rt = ? ORDER BY p.id_pengaduan DESC");
                 $stmt_list->bind_param("i", $id_rt_session);
                 $stmt_list->execute();
                 $pengaduan_list = $stmt_list->get_result();
@@ -420,8 +418,10 @@ if ($flash_message) unset($_SESSION['flash_message']);
                                     <tr>
                                         <td>#<?php echo $pengaduan['id_pengaduan']; ?></td>
                                         <td><?php echo date('d-m-Y', strtotime($pengaduan['tanggal_lapor'])); ?></td>
-                                        <td><?php echo htmlspecialchars($pengaduan['nama_pelapor']); ?></td>
-                                        <td><?php echo htmlspecialchars($pengaduan['nama_kategori']); ?></td>
+                                        <td><?php echo htmlspecialchars($pengaduan['nama_pelapor'] ?? 'Data Pelapor Dihapus'); ?>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($pengaduan['nama_kategori'] ?? 'Tanpa Kategori'); ?>
+                                        </td>
                                         <td>
                                             <?php $status = $pengaduan['status']; $badge_class = 'bg-secondary';
                                             if ($status == 'Diterima') $badge_class = 'bg-primary'; if ($status == 'Diproses') $badge_class = 'bg-warning text-dark';
